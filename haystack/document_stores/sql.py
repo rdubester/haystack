@@ -22,6 +22,7 @@ try:
     )
     from sqlalchemy.ext.declarative import declarative_base
     from sqlalchemy.orm import relationship, sessionmaker, validates
+    from sqlalchemy.orm import scoped_session # added
     from sqlalchemy.sql import case, null
 except (ImportError, ModuleNotFoundError) as ie:
     from haystack.utils.import_utils import _optional_component_not_installed
@@ -154,7 +155,7 @@ class SQLDocumentStore(BaseDocumentStore):
         else:
             engine = create_engine(url, **create_engine_params)
         Base.metadata.create_all(engine)
-        Session = sessionmaker(bind=engine)
+        Session = scoped_session(sessionmaker(bind=engine))
         self.session = Session()
         self.index: str = index
         self.label_index = label_index
