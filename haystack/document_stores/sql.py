@@ -156,7 +156,11 @@ class SQLDocumentStore(BaseDocumentStore):
             engine = create_engine(url, **create_engine_params)
         Base.metadata.create_all(engine)
         Session = scoped_session(sessionmaker(bind=engine))
+        logging.info("Created scoped session factory")
         self.session = Session()
+        logging.info("Created scoped session")
+        logging.info(type(self.session))
+        logging.info(dir(self.session))
         self.index: str = index
         self.label_index = label_index
         self.duplicate_documents = duplicate_documents
