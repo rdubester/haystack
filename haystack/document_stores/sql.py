@@ -21,9 +21,9 @@ try:
         ForeignKeyConstraint,
     )
     from sqlalchemy.ext.declarative import declarative_base
-    from sqlalchemy.orm import relationship, sessionmaker, validates
-    from sqlalchemy.orm import scoped_session # added
+    from sqlalchemy.orm import relationship, sessionmaker, scoped_session, validates
     from sqlalchemy.sql import case, null
+    from sshtunnel import SSHTunnelForwarder
 except (ImportError, ModuleNotFoundError) as ie:
     from haystack.utils.import_utils import _optional_component_not_installed
 
@@ -128,6 +128,8 @@ class SQLDocumentStore(BaseDocumentStore):
         duplicate_documents: str = "overwrite",
         check_same_thread: bool = False,
         isolation_level: str = None,
+        scoped = False,
+        ssh_confg: Optional[Dict[str, Any]] = None,
     ):
         """
         An SQL backed DocumentStore. Currently supports SQLite, PostgreSQL and MySQL backends.
@@ -147,20 +149,19 @@ class SQLDocumentStore(BaseDocumentStore):
         """
         super().__init__()
 
-        create_engine_params = {}
-        if isolation_level:
-            create_engine_params["isolation_level"] = isolation_level
-        if "sqlite" in url:
-            engine = create_engine(url, connect_args={"check_same_thread": check_same_thread}, **create_engine_params)
-        else:
-            engine = create_engine(url, **create_engine_params)
-        Base.metadata.create_all(engine)
-        Session = scoped_session(sessionmaker(bind=engine))
-        logging.info("Created scoped session factory")
-        self.session = Session()
-        logging.info("Created scoped session")
-        logging.info(type(self.session))
-        logging.info(dir(self.session))
+        if ssh_confg:
+            self.server = SSHTunnelForwarder(
+                ssh_address_or_host=(ssh_confg["host"], ssh_confg["port"]),
+                ssh_username=ssh_confg["user"],
+                ssh_password=ssh_confg["password"],
+                remote_bind_address=(ssh_confg["remote_host"], ssh_confg["remote_port"]),
+            )
+            self.server.start()
+            local_port = self.server.local_bind_port
+            url = url.replace("local_port", str(local_port))
+
+        self.session = self.create_session(url, check_same_thread, isolation_level, scoped)
+        
         self.index: str = index
         self.label_index = label_index
         self.duplicate_documents = duplicate_documents
@@ -169,9 +170,30 @@ class SQLDocumentStore(BaseDocumentStore):
         self.use_windowed_query = True
         if "sqlite" in url:
             import sqlite3
-
             if sqlite3.sqlite_version < "3.25":
                 self.use_windowed_query = False
+
+    def create_session(self, url, isolation_level, check_same_thread, scoped):
+        create_engine_params = {}
+        if isolation_level:
+            create_engine_params["isolation_level"] = isolation_level
+
+        # if using sqlite, set check_same_thread to False to mitigate multithreading issues    
+        if "sqlite" in url:
+            engine = create_engine(url, connect_args={"check_same_thread": check_same_thread}, **create_engine_params)
+        else:
+            engine = create_engine(url, **create_engine_params)
+        
+        # set metadata
+        Base.metadata.create_all(engine)
+
+        # create the session
+        factory = sessionmaker(bind=engine)
+        if scoped:
+            Session = scoped_session(factory)
+        else:
+            Session = factory()
+        return Session()
 
     def get_document_by_id(
         self, id: str, index: Optional[str] = None, headers: Optional[Dict[str, str]] = None

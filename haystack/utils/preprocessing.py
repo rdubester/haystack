@@ -4,7 +4,7 @@ import re
 import logging
 from pathlib import Path
 
-from haystack.nodes.file_converter import BaseConverter, DocxToTextConverter, PDFToTextConverter, TextConverter
+from haystack.nodes.file_converter import BaseConverter, DocxToTextConverter, PDFToTextOCRConverter, PDFToTextConverter, TextConverter
 from haystack.schema import Document
 
 
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 def convert_files_to_docs(
     dir_path: str,
     clean_func: Optional[Callable] = None,
+    ocr: bool = False,
     split_paragraphs: bool = False,
     encoding: Optional[str] = None,
     id_hash_keys: Optional[List[str]] = None,
@@ -52,7 +53,10 @@ def convert_files_to_docs(
     # No need to initialize converter if file type not present
     for file_suffix in suffix2paths.keys():
         if file_suffix == ".pdf":
-            suffix2converter[file_suffix] = PDFToTextConverter()
+            if ocr:
+                suffix2converter[file_suffix] = PDFToTextOCRConverter()
+            else:
+                suffix2converter[file_suffix] = PDFToTextConverter()
         if file_suffix == ".txt":
             suffix2converter[file_suffix] = TextConverter()
         if file_suffix == ".docx":
